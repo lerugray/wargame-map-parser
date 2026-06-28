@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+# scans/boards are large and project-specific — keep them out of this tool repo
+*.jpg
+*.jpeg
+*.png
+!docs/*.png
