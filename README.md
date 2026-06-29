@@ -74,6 +74,15 @@ grid = fit_from_anchors([
     # ... include >=2 EVEN-column anchors with their (down-shifted) centers
 ], image_full=(6518, 5139), web_scale=0.5)
 
+# 2b. VERIFY the calibration against the PRINTED numbers (catches a uniform off-by-one
+#     that the least-squares fit cannot — see Caveats). Pass hexes read off the printed
+#     numbers, ideally NOT used as fit anchors. Must return [].
+from parser import verify_against_printed
+mismatches = verify_against_printed(grid, [
+    {"col": 10, "row": 14, "x": 1030, "y": 2540},   # read straight off the printed "1014"
+])
+assert not mismatches, f"calibration is off the printed numbering: {mismatches}"
+
 # 3. classify by reference hexes
 arr = load_image("board-full.jpg")
 clf = ReferenceClassifier(grid).fit(arr, {
@@ -99,6 +108,16 @@ the agent-readable method.
 - **The fit is only as good as the anchors.** Include ≥2 even-column anchors
   with their actual (down-shifted) centers, or the even-column offset comes out
   wrong.
+- **A UNIFORM off-by-one is invisible to the fit.** If every anchor's (col,row)
+  is mislabelled the same way — e.g. read one row too low, or eyeballed from the
+  grid instead of read off the printed number — the least-squares fit is *perfect*
+  (≈0 residual, lands on real hexes) yet the whole map is one hex off the printed
+  numbering. "It lands on a hex" does NOT catch this. **Always run
+  `verify_against_printed(grid, truth)`** (truth = hexes read off the printed
+  numbers, ideally not anchors) and `overlay.draw_centers`, confirming each computed
+  CCRR label *equals the number printed in that hex*. (This is the real-world TWU
+  −1-row bug: every hex rendered/sampled one row off the print, undetected for three
+  sessions until checked against the printed numbers.)
 - **Reference-matching is reliable for hue/texture (is-this-water), less so for
   sorting non-water noise into forest/swamp** — dark town icons can match the
   forest centroid. Default ambiguous noise to clear and verify with the overlay.
