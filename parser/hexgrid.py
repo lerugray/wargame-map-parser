@@ -122,6 +122,14 @@ def fit_from_anchors(anchors: Iterable[dict], image_full: tuple[int, int],
     printed hex numbers off the scan and click their centers. You need at least
     two distinct columns and two distinct rows; a handful spread across the
     board (and across any seam) is better. Returns a calibrated HexGrid.
+
+    ⚠ OFF-BY-ONE TRAP (the TWU −1-row bug): the anchor (col,row) MUST be the number
+    PRINTED in that hex — NOT eyeballed from geometry. A *uniform* mislabel (e.g. every
+    anchor read one row too low) yields a PERFECT least-squares fit (≈0 residual, lands on
+    real hexes) yet every computed center is one hex off the printed numbering — invisible
+    to the fit and to a "does it land on a hex?" glance. ALWAYS cross-check the result with
+    ``verify_against_printed()`` (or ``overlay.draw_centers`` read against the printed
+    numbers) at hexes spread top/middle/bottom before trusting the parse.
     """
     import numpy as np
 
@@ -145,3 +153,37 @@ def fit_from_anchors(anchors: Iterable[dict], image_full: tuple[int, int],
         x_intercept_col0=float(x0), y_intercept_row0=float(y0),
         even_col_y_offset=float(eo), web_scale=web_scale,
     )
+
+
+def verify_against_printed(grid: "HexGrid", truth_anchors: Iterable[dict],
+                           tol_frac: float = 0.4) -> list[dict]:
+    """Catch a SYSTEMATIC calibration offset (e.g. an off-by-one-row anchor mislabel)
+    that the least-squares fit in ``fit_from_anchors`` CANNOT see.
+
+    A uniform shift in the anchor CCRR labels (say every anchor read one row too low)
+    produces a perfect fit — low residual, lands on real hexes — yet every computed center
+    is one hex off the PRINTED number. The only way to detect it is to compare
+    ``grid.center(col,row)`` against pixels read INDEPENDENTLY off the printed numbers
+    (ideally hexes NOT used as fit anchors), spread across the board.
+
+    truth_anchors: iterable of ``{"col","row","x","y"}`` where col/row are exactly what is
+      PRINTED in that hex and x,y are its pixel center (full-image space).
+    Returns a list of mismatches ``[{"ccrr","expected_px","got_px","dist_px"}]`` whose
+    distance exceeds ``tol_frac * row_pitch_y``. **Empty list = calibration matches the
+    printed numbering. Non-empty = the grid is off (very likely a whole-row/col shift) —
+    do NOT trust the parse until it is empty.** This is the gate that would have caught the
+    TWU −1-row bug, which fit cleanly but rendered/sampled every hex one row off the print.
+    """
+    tol = tol_frac * grid.row_pitch_y
+    out = []
+    for a in truth_anchors:
+        col, row = int(a["col"]), int(a["row"])
+        ex, ey = grid.center(col, row)
+        gx, gy = float(a["x"]), float(a["y"])
+        dist = ((ex - gx) ** 2 + (ey - gy) ** 2) ** 0.5
+        if dist > tol:
+            out.append({"ccrr": to_ccrr(col, row),
+                        "expected_px": (round(ex, 1), round(ey, 1)),
+                        "got_px": (round(gx, 1), round(gy, 1)),
+                        "dist_px": round(dist, 1)})
+    return out

@@ -24,6 +24,10 @@ absolute colour thresholds (which break per map). Pipeline lives in `parser/`.
    board AND across any former seam; **include ≥2 even-column anchors with their
    actual down-shifted centers**). `hexgrid.fit_from_anchors(anchors, image_full)`
    → affine `(col,row)→pixel`. Save with `grid.to_json()`.
+   **Each anchor's (col,row) MUST be the number PRINTED in that hex — read it, don't
+   eyeball it from the grid geometry.** If you mislabel every anchor the same way (e.g.
+   one row low), the fit is still perfect but the whole grid is off by that shift; step 6
+   is where you catch it.
 
 3. **Pick CONFIDENT exemplars per terrain type** — one+ obviously-correct hex of
    each (clear, forest, swamp, lake/water, …). One bad exemplar (a "sea" sample
@@ -42,9 +46,16 @@ absolute colour thresholds (which break per map). Pipeline lives in `parser/`.
    along hex edges (half-water hexes), confine it to a region and model it as
    edges (like a rivers layer), NOT a full-hex type. Flag this; don't guess.
 
-6. **ALWAYS verify visually.** `overlay.draw_centers` (calibration lands on
-   printed hexes?) and `overlay.draw_terrain` (classification matches the eye?).
-   Counts lie; render and look before declaring done.
+6. **ALWAYS verify the calibration against the PRINTED NUMBERS — not just "lands on
+   a hex".** Run `hexgrid.verify_against_printed(grid, truth)` with a few hexes read
+   straight off the printed numbers (ideally NOT the fit anchors), top/middle/bottom.
+   It must return `[]`. Then `overlay.draw_centers` and confirm each computed **CCRR
+   label equals the number PRINTED in that hex**. A *uniform* row/col offset lands on
+   real hexes AND fits with ~0 least-squares residual — so "it lands on a hex" and a
+   clean fit BOTH pass while the whole map is one hex off (the TWU −1-row bug: every
+   hex rendered/sampled one row below its printed number, undetected for 3 sessions).
+   The label-vs-printed-number check is the only thing that catches it. Then
+   `overlay.draw_terrain` (classification matches the eye?). Counts lie; render and look.
 
 ## Red flags
 - Classifying with hardcoded colour cutoffs → switch to exemplars.
