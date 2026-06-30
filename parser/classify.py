@@ -31,6 +31,43 @@ capture terrain drawn on hex EDGES: lakes-on-hexsides, rivers, escarpments. On
 the canonical example (TWU East Prussia) the real Masurian lakes run along hex
 edges, so many hexes are half-lake/half-land and no full-hex label is right.
 Detect/keep those as a confined region and model them in a separate EDGE layer.
+
+---
+
+GotA (Guns of the Americas, 2026-06-30) — REFINEMENTS OVER PURE NEAREST-EXEMPLAR
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+GotA's ~4,000-hex continental map revealed three cases where
+``ReferenceClassifier`` alone is insufficient:
+
+1. **Same-base-color terrains** (GotA clear/desert/rough = three tan shades).
+   Mean-color nearest-exemplar conflates them; shade ordering + local context
+   needed.
+
+2. **Symbol-only terrains** (GotA swamp = short horizontal broken dashes on
+   cream). Color alone finds nothing (cream == clear). Morphology finds them
+   once trained on operator-confirmed exemplars (10/12 hit rate post-supervised
+   training; near-zero pre-supervision).
+
+3. **Over-broad water** (~480 spurious "water" hexes with relaxed centroid
+   gate). Desaturated tan land drifts toward the water centroid. Fix: strict
+   explicit blue-hue gate (``B > R + margin AND B > G + margin``) BEFORE
+   nearest-centroid matching.
+
+RECOMMENDED APPROACH (layered, not replaced — ``ReferenceClassifier`` stays):
+  1. Strict blue-hue gate → definitive water (skip nearest-centroid for these).
+  2. Morphology-first for symbol terrains (swamp/forest): if elongation > thresh
+     → swamp; if high circular-blob density → forest. Override base color.
+  3. ``ReferenceClassifier`` nearest-centroid for everything else.
+
+OPERATOR-EXEMPLAR GOTCHAS:
+  - **Mask the printed hex number** (CCRR label) before sampling — dark ink
+    biases mean color and fakes a mark in morphology.
+  - **Center-only sampling** (``r <= ~half hex``) — excludes edge rivers,
+    coastlines, hexside bleed from neighboring terrain.
+  - Exemplars from operator SCREENSHOTS of the real hex (not guessed from a
+    rescaled overview) are required for hard terrains. See ``docs/CONVENTIONS.md``.
+
+TODO / ROADMAP — ``HybridClassifier`` (see stub at bottom of this module).
 """
 from __future__ import annotations
 
@@ -167,3 +204,80 @@ class ReferenceClassifier:
 
 def load_image(path: str) -> np.ndarray:
     return np.asarray(Image.open(path).convert("RGB"))
+
+
+# ---------------------------------------------------------------------------
+# TODO: HybridClassifier — color gate + morphology override + centroid fallback
+# ---------------------------------------------------------------------------
+# Lesson from GotA (2026-06-30): pure ReferenceClassifier (nearest z-scored
+# centroid) is insufficient for maps with same-palette terrains and/or
+# symbol-only terrain types (swamp). The correct approach layers three tiers:
+#
+#   Tier 1 — STRICT BLUE-HUE GATE: B > R + margin AND B > G + margin → water.
+#             Prevents ~480 spurious water hexes (GotA: centroid-only over-grab).
+#
+#   Tier 2 — MORPHOLOGY OVERRIDE: run _morphology() on the interior patch.
+#             If elongation > swamp_thresh → swamp.
+#             If mark_density > forest_thresh AND elongation < compact_thresh → forest.
+#             Symbol terrains OVERRIDE base color.
+#
+#   Tier 3 — NEAREST-CENTROID FALLBACK: ReferenceClassifier.classify_hex() for
+#             everything that doesn't hit a tier-1 or tier-2 gate.
+#
+# Implementation sketch (not yet wired — add tests before promoting to production):
+#
+# class HybridClassifier:
+#     """Layered classifier: strict water gate → morphology override → centroid fallback.
+#
+#     Parameters
+#     ----------
+#     ref_clf : ReferenceClassifier
+#         A fitted ReferenceClassifier used as the final fallback.
+#     water_blue_margin : int
+#         Minimum pixel-value margin by which B must exceed both R and G for a hex
+#         to be classified as water without consulting the centroid. Default 15.
+#     swamp_elongation_thresh : float
+#         ``elongation`` above this value triggers a swamp override. Default 2.5.
+#     forest_density_thresh : float
+#         ``mark_density`` above this value (with low elongation) triggers a forest
+#         override. Default 0.08.
+#     forest_compact_thresh : float
+#         ``elongation`` must be BELOW this for the forest override to fire. Default 1.8.
+#     """
+#     def __init__(self, ref_clf: ReferenceClassifier,
+#                  water_blue_margin: int = 15,
+#                  swamp_elongation_thresh: float = 2.5,
+#                  forest_density_thresh: float = 0.08,
+#                  forest_compact_thresh: float = 1.8):
+#         self.ref_clf = ref_clf
+#         self.water_blue_margin = water_blue_margin
+#         self.swamp_elongation_thresh = swamp_elongation_thresh
+#         self.forest_density_thresh = forest_density_thresh
+#         self.forest_compact_thresh = forest_compact_thresh
+#
+#     def classify_hex(self, arr: np.ndarray, hexcode: str) -> str:
+#         col, row = parse_ccrr(hexcode)
+#         feat = hex_features(arr, self.ref_clf.grid, col, row)
+#         r, g, b = feat[0], feat[1], feat[2]
+#         elong, density = feat[4], feat[5]
+#         # Tier 1: strict blue-hue gate
+#         if b > r + self.water_blue_margin and b > g + self.water_blue_margin:
+#             return "water"
+#         # Tier 2: morphology override
+#         if elong > self.swamp_elongation_thresh:
+#             return "swamp"
+#         if density > self.forest_density_thresh and elong < self.forest_compact_thresh:
+#             return "forest"
+#         # Tier 3: nearest-centroid fallback
+#         return self.ref_clf.classify_hex(arr, hexcode)[0]
+#
+#     def classify_all(self, arr: np.ndarray, hexes: list[str]) -> dict[str, str]:
+#         return {h: self.classify_hex(arr, h) for h in hexes}
+#
+# To promote:
+#   1. Add unit tests covering the tier-1/2/3 code paths.
+#   2. Calibrate water_blue_margin on a real scan (sample 10 confirmed water hexes
+#      and 10 confirmed non-water tan hexes; choose margin at the gap midpoint).
+#   3. Calibrate swamp/forest thresholds from operator-confirmed exemplars.
+#   4. Remove the comment block above and make this a live class.
+

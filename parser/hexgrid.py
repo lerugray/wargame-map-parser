@@ -155,6 +155,65 @@ def fit_from_anchors(anchors: Iterable[dict], image_full: tuple[int, int],
     )
 
 
+def flat_top_geometry_ratio(col_pitch: float, row_pitch: float) -> float:
+    """Return row_pitch / col_pitch for a fitted flat-top hex grid.
+
+    For a geometrically correct flat-top hex the ideal value is ``2 / sqrt(3) ≈ 1.1547``.
+    Pass the ``col_pitch_x`` and ``row_pitch_y`` from a fitted :class:`HexGrid` to
+    check whether the fit is geometrically plausible before trusting classification output.
+
+    Lesson from GotA (Guns of the Americas, 2026-06-30): a fit anchored only on part of
+    the map came out at ≈1.23; a correct fit spanning NW/NE/SE came out at ≈1.1540.
+    The geometry ratio is a fast sanity check that catches bad fits before expensive
+    classification runs. Use :func:`check_geometry_ratio` for a full verdict with a warning
+    message.
+    """
+    return row_pitch / col_pitch
+
+
+def check_geometry_ratio(grid: "HexGrid", tolerance: float = 0.03) -> dict:
+    """Warn if the grid's row/col pitch ratio deviates from the flat-top ideal (≈1.1547).
+
+    For a geometrically correct flat-top hex grid::
+
+        row_pitch / col_pitch = 2 / sqrt(3) ≈ 1.1547
+
+    A ratio outside ``ideal ± tolerance`` strongly suggests a mis-fitted grid — wrong
+    anchors, an unflattened scan, or an origin-drift error where one anchor was eyeballed
+    rather than read off the printed number.
+
+    Lesson from GotA (2026-06-30): an initial fit spanning only part of the map gave
+    ratio ≈ 1.23.  Refitting from three operator-read anchors spanning NW/NE/SE gave
+    ratio ≈ 1.1540 — within tolerance, and validated against un-fitted hexes.
+
+    Returns a dict with keys:
+
+    - ``ratio``     — the measured ``row_pitch / col_pitch``
+    - ``ideal``     — ``2 / sqrt(3)`` ≈ 1.1547
+    - ``deviation`` — ``abs(ratio - ideal)``
+    - ``ok``        — ``True`` if deviation ≤ tolerance
+    - ``warning``   — human-readable explanation (empty string if ok)
+
+    Example::
+
+        result = check_geometry_ratio(grid)
+        if not result["ok"]:
+            raise ValueError(result["warning"])
+    """
+    ideal = 2.0 / math.sqrt(3)
+    ratio = flat_top_geometry_ratio(grid.col_pitch_x, grid.row_pitch_y)
+    dev = abs(ratio - ideal)
+    ok = dev <= tolerance
+    warning = (
+        "" if ok else
+        f"Geometry-ratio check FAILED: row_pitch/col_pitch = {ratio:.4f}, "
+        f"ideal = {ideal:.4f}, deviation = {dev:.4f} (tolerance {tolerance:.4f}). "
+        "Likely a mis-fitted grid — re-anchor from NW/NE/SE corners, or suspect "
+        "origin-drift (one anchor eyeballed instead of read off the printed number)."
+    )
+    return {"ratio": ratio, "ideal": ideal, "deviation": dev, "ok": ok, "warning": warning}
+
+
 def verify_against_printed(grid: "HexGrid", truth_anchors: Iterable[dict],
                            tol_frac: float = 0.4) -> list[dict]:
     """Catch a SYSTEMATIC calibration offset (e.g. an off-by-one-row anchor mislabel)

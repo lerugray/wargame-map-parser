@@ -101,6 +101,36 @@ See [`examples/twu/`](examples/twu/) for the full East Prussia case study
 (seam fix + calibration + lake/swamp cleanup), and [`SKILL.md`](SKILL.md) for
 the agent-readable method.
 
+## Method refinements (GotA 2026-06-30)
+
+Digitizing *Guns of the Americas* (~4,000 hexes, continental scale) revealed several
+cases where the original single-method nearest-exemplar approach broke down. The lessons
+are documented in full in [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md). Summary:
+
+**A map has three layers, not one.** Hex fill (interior terrain), hexside edges (rivers,
+rail, mountain ridges), and point features (city circles, VP numbers) must be classified
+separately. Mountains on GotA are hexside features — a fill classifier found 2 of 1,539
+because it was looking in the wrong layer.
+
+**Classification is hybrid — color AND morphology, layered.** Pure nearest-exemplar on
+mean color alone conflates terrains that share a base color (GotA: three tan shades for
+clear/desert/rough) and misses symbol-only terrains entirely (swamp = dashes on cream;
+nearest-centroid found none). The correct approach: strict blue-hue gate for water first,
+then morphology override for symbol terrains, then nearest-centroid fallback. Symbol
+terrains override base color.
+
+**Use supervised exemplars, not guessed ones.** For hard terrains (symbol-based or
+same-palette-different-shade), the operator screenshots the actual hex from the scan
+viewer, reads the printed CCRR, and you extract the template at those pixel coordinates.
+GotA swamp went from near-zero hit rate to 10/12 once driven by operator-screenshot
+exemplars.
+
+**Grid fit sanity check.** For flat-top hexes, `row_pitch / col_pitch = 2/√3 ≈ 1.1547`.
+`hexgrid.check_geometry_ratio(grid)` warns if a fit deviates from this (a bad GotA fit
+came out at 1.23; the correct fit was 1.154). Strict blue-hue gate for water: always
+check `B > R + margin AND B > G + margin` explicitly — nearest-centroid over-grabbed ~480
+non-water hexes.
+
 ## Caveats (read before trusting output)
 
 - **`detect_overlap` returns an estimate.** Confirm it against the calibration:

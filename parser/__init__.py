@@ -10,14 +10,18 @@ Pipeline:
 Method credit: Ray Weiss (reference-hex matching; bulbs-vs-lines morphology;
 hexside-terrain needs an edge layer). See README.md and SKILL.md.
 """
-from .hexgrid import HexGrid, fit_from_anchors, verify_against_printed, parse_ccrr, to_ccrr
+from .hexgrid import (HexGrid, fit_from_anchors, verify_against_printed,
+                      flat_top_geometry_ratio, check_geometry_ratio,
+                      parse_ccrr, to_ccrr)
 from .classify import ReferenceClassifier, hex_features, load_image
 from .seams import detect_overlap, stitch, fix_sheets
 from .overlay import draw_terrain, draw_centers, TERRAIN_COLORS
 
 __version__ = "0.1.0"
 __all__ = [
-    "HexGrid", "fit_from_anchors", "verify_against_printed", "parse_ccrr", "to_ccrr",
+    "HexGrid", "fit_from_anchors", "verify_against_printed",
+    "flat_top_geometry_ratio", "check_geometry_ratio",
+    "parse_ccrr", "to_ccrr",
     "ReferenceClassifier", "hex_features", "load_image",
     "detect_overlap", "stitch", "fix_sheets",
     "draw_terrain", "draw_centers", "TERRAIN_COLORS",
