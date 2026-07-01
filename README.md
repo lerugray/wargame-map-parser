@@ -131,6 +131,21 @@ came out at 1.23; the correct fit was 1.154). Strict blue-hue gate for water: al
 check `B > R + margin AND B > G + margin` explicitly — nearest-centroid over-grabbed ~480
 non-water hexes.
 
+## Hexwright pipeline (hand-refine the guess)
+
+WMP produces a rough hex-fill terrain guess; the hand-correction happens in
+[Hexwright](https://github.com/lerugray/hexwright), the engine-agnostic hex-map editor.
+`parser/export_hexwright.py` converts a classification into a Hexwright-importable file
+(maps `forest`->`woods`, `lake`->`water`; same flat-top even-q CCRR addressing):
+
+```
+python -m parser.export_hexwright wmp-terrain.json -o gota-terrain.hexwright.json
+```
+
+In Hexwright, **Import WMP draft** loads it and marks every hex an unconfirmed *draft* to refine +
+confirm. Full loop: scan -> WMP rough-classify -> Hexwright hand-refine -> canonical export. (Hexsides
+and in-hex features are assigned in Hexwright; WMP classifies hex-fill terrain only — see "Hard limit".)
+
 ## Caveats (read before trusting output)
 
 - **`detect_overlap` returns an estimate.** Confirm it against the calibration:
