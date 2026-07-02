@@ -53,8 +53,12 @@ a full-hex type. The tool flags this rather than guessing.
 ## Install
 
 ```bash
-pip install -r requirements.txt      # numpy + Pillow only
+pip install -r requirements.txt
 ```
+
+Core pipeline (seams/hexgrid/classify/overlay/export_hexwright) needs only
+numpy + Pillow. `parser.hexside_snap` (below) additionally needs scipy +
+scikit-image — both are in `requirements.txt`.
 
 ## Quick start
 
@@ -145,6 +149,37 @@ python -m parser.export_hexwright wmp-terrain.json -o gota-terrain.hexwright.jso
 In Hexwright, **Import WMP draft** loads it and marks every hex an unconfirmed *draft* to refine +
 confirm. Full loop: scan -> WMP rough-classify -> Hexwright hand-refine -> canonical export. (Hexsides
 and in-hex features are assigned in Hexwright; WMP classifies hex-fill terrain only — see "Hard limit".)
+
+## Hexside-snap (rivers, ridges, impassible terrain)
+
+Hexsides are the fourth surface WMP can produce, alongside hex-fill terrain
+(above), for hand-traced linear features — rivers, ridges/mountains,
+impassible-terrain boundaries — that live on hex *edges*, not interiors (see
+"Hard limit: hexside terrain" above). `parser.hexside_snap.HexsideSnapper`
+snaps a hand-traced mask onto the hex-lattice hexside graph via HMM/Viterbi
+map-matching, treating the trace as a noisy GPS track and the hexside graph as
+the road network. It broke a hard ~46% coverage ceiling every distance-
+threshold method hit on a meandering trace (see
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) §5 for the full method, the
+banned-10px-metric rationale, and the acceptance discipline).
+
+Method spec: Fugu (fugu-ultra, spec-only mode), commissioned by Ray Weiss.
+Validated on *Guns of the Americas* 2026-07-02 (814 river + 64 impassible
+hexsides accepted, confirmed against the rendered overlay).
+
+```bash
+python -m parser.hexside_snap \
+    --grid hexgrid.json --terrain terrain.json \
+    --trace rivers=traces/rivers-trace.png \
+    --trace impassible=traces/impassible-trace.png \
+    --out hexsides-snap.json \
+    --board board.jpg --overlay overlays/ --overlay-scale 0.5
+```
+
+Output is the Hexwright-importable grouped shape
+`{"rivers": [{"a":"CCRR","b":"CCRR"}, ...], "impassible": [...]}`. **Always
+review the `--overlay` render before trusting the output** — same discipline as
+everywhere else in this tool: counts lie, pictures don't.
 
 ## Caveats (read before trusting output)
 

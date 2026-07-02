@@ -1,2 +1,7 @@
 numpy>=1.24
 Pillow>=10.0
+
+# parser/hexside_snap.py only (HMM/Viterbi trace-to-hexside map-matching):
+# the rest of the package needs just numpy + Pillow above.
+scipy>=1.10
+scikit-image>=0.21

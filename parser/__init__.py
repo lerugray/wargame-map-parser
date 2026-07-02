@@ -6,9 +6,18 @@ Pipeline:
      (then hexgrid.verify_against_printed   confirm it isn't a uniform off-by-one)
   3. classify.ReferenceClassifier   nearest-exemplar terrain (colour+texture+morphology)
   4. overlay.draw_terrain / draw_centers   LOOK at the result before trusting it
+  5. hexside_snap.HexsideSnapper   HMM/Viterbi map-matching of hand-traced linear
+     features (rivers, ridges, impassible terrain) onto the hex-lattice hexside graph
+     -- `from parser.hexside_snap import HexsideSnapper, SnapParams, snap_traces`
 
 Method credit: Ray Weiss (reference-hex matching; bulbs-vs-lines morphology;
-hexside-terrain needs an edge layer). See README.md and SKILL.md.
+hexside-terrain needs an edge layer). Hexside-snap: spec by Fugu (fugu-ultra,
+spec-only mode), validated on GotA 2026-07-02. See README.md and SKILL.md.
+
+``hexside_snap`` requires scipy + scikit-image (see requirements.txt); the
+rest of this package needs only numpy + Pillow, so hexside_snap is a
+separate import (not re-exported at package level) to keep the base install
+light.
 """
 from .hexgrid import (HexGrid, fit_from_anchors, verify_against_printed,
                       flat_top_geometry_ratio, check_geometry_ratio,

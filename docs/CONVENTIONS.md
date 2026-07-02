@@ -216,6 +216,104 @@ through version-suffixed files.
 
 ---
 
+## 5. Hexside-snap — HMM/Viterbi map-matching for hand-traced linear features
+
+**When to use it:** you have a hand-traced linear feature over a scanned hex map —
+rivers, ridges/mountains, impassible-terrain boundaries, rail lines, coastline
+breaks — and need to assign it onto the hex-lattice **hexside** graph (which two
+adjacent hexes share the edge the feature runs along). This is the hexside-edge
+layer named in §1 above; `parser.hexside_snap` is the tool that fills it in from a
+hand trace instead of requiring the operator to paint every hexside by hand.
+
+**Method:** `parser.hexside_snap.HexsideSnapper` (spec by Fugu, fugu-ultra
+spec-only mode, commissioned by Ray Weiss; validated on *Guns of the Americas*
+2026-07-02 — 814 river + 64 impassible hexsides accepted, confirmed against the
+rendered overlay). Treats the hand-traced skeleton as a noisy GPS trace and the
+hex-lattice hexside graph as the road network, and decodes the most likely
+CONNECTED walk through the graph via per-link Viterbi — an emission cost that
+rewards low perpendicular distance to a hexside's supporting line AND parallel
+tangent (not just proximity), a transition cost that only allows moving between
+graph-adjacent hexsides, and a post-decode along-vs-crossing support rule that
+throws out edges the trace only grazed or crossed.
+
+### The 10px-proximity metric is BANNED for this method
+
+Distance-threshold / fixed-pixel-buffer methods (accept a hexside if the trace
+passes within Npx of it) hit a hard **~46% coverage ceiling** on a meandering
+hand trace, because "nearest within Npx" throws away exactly the information
+that resolves ambiguity: which direction the trace is *headed*. Do not use a
+10px (or any fixed-pixel) proximity gate as a success criterion, a ranking
+metric, or an acceptance test for hexside-snap output. It is known to reject
+correct meandering assignments and was the reason the original coverage ceiling
+existed.
+
+### Acceptance is coverage / connectivity / Fréchet distance, plus the operator's eyes
+
+Objective metrics rank candidates and flag review priority — they are not
+pass/fail gates:
+- **Coverage proxy** — the fraction of resampled skeleton arc assigned to an
+  edge that survived the along-vs-crossing acceptance rule.
+- **Discrete Fréchet distance** (normalized by `H`) between the hand-traced
+  skeleton and the decoded lattice-vertex walk — median/p90/max, per
+  `HexsideSnapper.snap_layer`'s `diagnostics["frechet_dF_over_H"]`.
+- **Connectivity** — connected-component count, degree histogram, duplicate/
+  broken chains.
+
+**The operator's visual review of the `--overlay` render is the only pass/fail
+gate** (same discipline as §4 above): magenta = hand trace, green = high-
+confidence accepted hexside, amber = accepted-but-lower-confidence, red =
+suppressed crossing/ambiguous candidate. Never call a hexside-snap run "done"
+from a count or your own render — the operator confirms on their own screen.
+
+### Constants are pinned, not guessed
+
+Every geometric parameter is expressed as a multiple of `H` (the hexside
+length, `HexGrid.hex_size()`). `SnapParams`'s defaults are the operator-
+validated GotA values — don't change one without re-validating against a known-
+good overlay. A real Viterbi bug is preserved as a documented fix, not an
+implementation footnote: the DP's "cold restart" option must only compete when
+no real transition from any previous state is valid, never against the
+*accumulated* cost of a real multi-step path (a restart's cost is always just
+one emission term, so unconditional competition degenerates the whole decode to
+1-sample paths — this happened during dev on a 53-sample test link). See the
+module docstring in `parser/hexside_snap.py` and
+`tests/test_hexside_snap.py::test_long_chain_does_not_degenerate_to_cold_restart`.
+
+### Irregular grids
+
+The candidate-graph neighbor detection uses a single Euclidean distance band
+(`SnapParams.nbr_lo`/`nbr_hi`, default `[1.35H, 1.85H]`) rather than a parity-
+aware even-q neighbor table — correct because on a REGULAR flat-top hex lattice
+all six neighbor directions are equidistant (`sqrt(3)*H`). A grid whose
+`row_pitch` deviates from the ideal `2/sqrt(3) * col_pitch` ratio (see
+`hexgrid.check_geometry_ratio`) breaks that equidistance proportionally to the
+deviation; widen `nbr_lo`/`nbr_hi` to compensate for a mildly irregular grid, or
+re-anchor the grid fit first if the deviation is large.
+
+### Quick start
+
+```python
+from parser import HexGrid
+from parser.hexside_snap import HexsideSnapper, snap_traces
+
+grid = HexGrid.from_json("hexgrid.json")
+valid_hexes = [...]  # every eligible ("land") hex code, e.g. terrain.json's keys
+
+hexwright_json, results = snap_traces(
+    grid, valid_hexes,
+    layers={"rivers": "traces/rivers-trace.png", "impassible": "traces/impassible-trace.png"},
+    board_img="board.jpg", overlay_dir="overlays/", overlay_scale=0.5,
+)
+# hexwright_json == {"rivers": [{"a":"CCRR","b":"CCRR"}, ...], "impassible": [...]}
+# -- import into Hexwright, or write straight to data/hexsides.json after review.
+```
+
+Or via the CLI: `python -m parser.hexside_snap --grid hexgrid.json --terrain
+terrain.json --trace rivers=rivers-trace.png --out hexsides-snap.json --board
+board.jpg --overlay overlays/`.
+
+---
+
 ## Checklist — before declaring a digitization complete
 
 - [ ] Three layers accounted for: fill classified, hexside features modeled as an edge layer,
@@ -230,3 +328,6 @@ through version-suffixed files.
       set).
 - [ ] Geographic sanity check passed (terrain distribution makes physical sense for the map).
 - [ ] Operator has reviewed the final overlay on their own screen and confirmed it correct.
+- [ ] If hexside features (rivers/ridges/impassible) were traced: hexside-snap's
+      `--overlay` render reviewed by the operator, NOT accepted from a coverage
+      count (§5).
