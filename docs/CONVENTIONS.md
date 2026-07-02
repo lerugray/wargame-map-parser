@@ -331,3 +331,20 @@ board.jpg --overlay overlays/`.
 - [ ] If hexside features (rivers/ridges/impassible) were traced: hexside-snap's
       `--overlay` render reviewed by the operator, NOT accepted from a coverage
       count (§5).
+
+### Hexside-snap: pinned behaviors (do not "fix" without re-validation)
+
+Two real quirks found by the 2026-07-02 fugu review are deliberately KEPT,
+because they were present in the GotA-validated run and changing them changes
+which edges get accepted/suppressed (the operator-approved decode contract):
+
+1. `prune_short_spurs`: endpoint spurs always carry a real `to_cluster`
+   (never -1), so the length-based spur pruning path never fires.
+2. `snap_layer` passes `step_len=RESAMPLE_STEP` rather than each segment's
+   actual `delta_s` into the Lparallel/Lcross accumulation.
+
+If either is ever corrected, treat it as a NEW algorithm version: re-run the
+GotA layers, re-render overlays, and get operator eyes on the diff before
+adopting. Diagnostics-only and CLI-surface fixes from the same review WERE
+applied (Fréchet empty-polyline → inf, overlay viewport y-test, duplicate
+--trace now raises).

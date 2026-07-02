@@ -151,8 +151,10 @@ def discrete_frechet(P: np.ndarray, Q: np.ndarray) -> float:
     (spec S2.1). Densify inputs at ``0.25H`` before calling for a meaningful
     number; this function itself just computes the distance."""
     n, m = len(P), len(Q)
-    if n == 0 or m == 0:
+    if n == 0 and m == 0:
         return 0.0
+    if n == 0 or m == 0:
+        return float("inf")
 
     if n > 400:
         idx = np.linspace(0, n - 1, 400).astype(int)
@@ -1088,7 +1090,9 @@ class HexsideSnapper:
         for eidx in suppressed:
             e = self.EDGES[eidx]
             p1, p2 = to_px(e["pa"]), to_px(e["pb"])
-            if 0 <= p1[0] <= sw or 0 <= p2[0] <= sw:
+            in1 = 0 <= p1[0] <= sw and 0 <= p1[1] <= sh
+            in2 = 0 <= p2[0] <= sw and 0 <= p2[1] <= sh
+            if in1 or in2:
                 draw.line([p1, p2], fill=(220, 30, 30, 200), width=2)
 
         for eidx, rec in accepted.items():
@@ -1137,6 +1141,8 @@ def _parse_trace_args(items) -> dict:
         if "=" not in item:
             raise SystemExit(f"--trace expects LAYER=PATH, got: {item!r}")
         name, path = item.split("=", 1)
+        if name in layers:
+            raise SystemExit(f"--trace layer {name!r} given more than once")
         layers[name] = path
     return layers
 
