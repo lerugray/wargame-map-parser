@@ -43,16 +43,20 @@ class HexGrid:
     row_pitch_y: float                   # vertical px between adjacent rows
     x_intercept_col0: float              # x of the (hypothetical) column 0 center
     y_intercept_row0: float              # y of the (hypothetical) row 0 center
-    even_col_y_offset: float = 0.0       # even columns shifted down by this many px
+    even_col_y_offset: float = 0.0       # even-q: even columns shifted down by this many px
     web_scale: float = 1.0               # board-web.jpg = web_scale * board-full
     orientation: str = "flat-top"
-    offset_scheme: str = "even-q"        # even columns shifted down
+    offset_scheme: str = "even-q"        # "even-q" (even cols down) or "odd-q" (odd cols down)
+    odd_col_y_offset: float = 0.0        # odd-q: odd columns shifted down by this many px
 
     def center(self, col: int, row: int) -> tuple[float, float]:
         """Full-image pixel center of hex (col, row)."""
         x = self.x_intercept_col0 + col * self.col_pitch_x
         y = self.y_intercept_row0 + row * self.row_pitch_y
-        if col % 2 == 0:
+        if self.offset_scheme == "odd-q":
+            if col % 2 == 1:
+                y += self.odd_col_y_offset
+        elif col % 2 == 0:
             y += self.even_col_y_offset
         return x, y
 
@@ -80,10 +84,16 @@ class HexGrid:
     def to_json(self, path: str | None = None) -> dict:
         d = asdict(self)
         d["image_full"] = list(self.image_full)
-        d["formula"] = ("x = {xi} + col*{cp}; y = {yi} + row*{rp} + "
-                        "((col%2==0)?{eo}:0)").format(
-            xi=self.x_intercept_col0, cp=self.col_pitch_x,
-            yi=self.y_intercept_row0, rp=self.row_pitch_y, eo=self.even_col_y_offset)
+        if self.offset_scheme == "odd-q":
+            d["formula"] = ("x = {xi} + col*{cp}; y = {yi} + row*{rp} + "
+                            "((col%2==1)?{oo}:0)").format(
+                xi=self.x_intercept_col0, cp=self.col_pitch_x,
+                yi=self.y_intercept_row0, rp=self.row_pitch_y, oo=self.odd_col_y_offset)
+        else:
+            d["formula"] = ("x = {xi} + col*{cp}; y = {yi} + row*{rp} + "
+                            "((col%2==0)?{eo}:0)").format(
+                xi=self.x_intercept_col0, cp=self.col_pitch_x,
+                yi=self.y_intercept_row0, rp=self.row_pitch_y, eo=self.even_col_y_offset)
         if path:
             with open(path, "w") as f:
                 json.dump(d, f, indent=2)
@@ -98,6 +108,13 @@ class HexGrid:
         # tolerate the richer schema some projects carry (x_model.left/right etc.)
         xm = d.get("x_model", {})
         ym = d.get("y_model", {})
+        scheme = d.get("offset_scheme", "even-q")
+        if scheme not in ("even-q", "odd-q"):
+            raise ValueError(f"unsupported offset_scheme {scheme!r}")
+        if scheme == "odd-q" and "odd_col_y_offset" not in d:
+            raise ValueError(
+                "offset_scheme 'odd-q' requires an explicit odd_col_y_offset "
+                "(refusing to silently flatten the stagger)")
         return cls(
             image_full=tuple(d["image_full"]),
             col_pitch_x=d.get("col_pitch_x") or xm.get("col_pitch_x"),
@@ -110,7 +127,8 @@ class HexGrid:
                 or ym.get("even_col_down_offset", 0.0),
             web_scale=d.get("web_scale", 1.0),
             orientation=d.get("orientation", "flat-top"),
-            offset_scheme=d.get("offset_scheme", "even-q"),
+            offset_scheme=scheme,
+            odd_col_y_offset=d.get("odd_col_y_offset", 0.0),
         )
 
 
